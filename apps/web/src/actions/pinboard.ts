@@ -10,6 +10,8 @@ export async function createPin(
   tags: string[],
   color: string,
   addedBy: string,
+  gridX: number,
+  gridY: number,
 ): Promise<PinDoc> {
   return writeClient.create({
     _type: 'pin',
@@ -19,12 +21,26 @@ export async function createPin(
     tags,
     color,
     addedBy,
+    gridX,
+    gridY,
     createdAt: new Date().toISOString(),
   }) as unknown as PinDoc
 }
 
-export async function deletePin(id: string): Promise<void> {
-  await writeClient.delete(id)
+export async function updatePinPosition(
+  pinId: string,
+  gridX: number,
+  gridY: number,
+): Promise<void> {
+  await writeClient.patch(pinId).set({ gridX, gridY }).commit()
+}
+
+export async function softDeletePin(pinId: string): Promise<void> {
+  await writeClient.patch(pinId).set({ deletedAt: new Date().toISOString() }).commit()
+}
+
+export async function restorePin(pinId: string): Promise<void> {
+  await writeClient.patch(pinId).unset(['deletedAt']).commit()
 }
 
 export async function fetchPageTitle(url: string): Promise<string | null> {

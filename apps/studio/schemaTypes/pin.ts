@@ -19,6 +19,9 @@ export const pinSchema = defineType({
         list: ['zinc', 'violet', 'blue', 'green', 'amber', 'red'],
       },
     }),
+    defineField({ name: 'gridX', type: 'number', title: 'Grid X' }),
+    defineField({ name: 'gridY', type: 'number', title: 'Grid Y' }),
+    defineField({ name: 'deletedAt', type: 'datetime', title: 'Deleted At' }),
     defineField({ name: 'createdAt', type: 'datetime', title: 'Created At' }),
   ],
   preview: {

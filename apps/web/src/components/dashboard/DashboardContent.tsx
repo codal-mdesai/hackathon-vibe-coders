@@ -2,20 +2,21 @@
 
 import Link from 'next/link'
 import { useSpace } from '@/providers/SpaceProvider'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { SectionWidget } from './SectionWidget'
 import { LiveClock } from './LiveClock'
+import { PinBoard } from '@/components/pinboard/PinBoard'
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard'
-import { maskValue, isSensitiveKey } from '@/lib/mask'
+import { maskValue } from '@/lib/mask'
 import { deriveKey, decrypt } from '@/lib/crypto'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Key, Variable, Braces, Pin, FileText,
-  Webhook, FileJson, Copy, Check, ExternalLink,
+  Key, Variable, Braces, FileText,
+  Webhook, FileJson, Copy, Check, ExternalLink, ChevronDown,
 } from 'lucide-react'
 import type { DashboardData } from '@/sanity/queries/dashboard'
-import type { SpaceCounts } from '@/providers/SpaceProvider'
 
 type Props = {
   slug: string
@@ -103,29 +104,6 @@ function GqlRows({ queries }: { queries: DashboardData['gqlQueries'] }) {
   )
 }
 
-function PinRows({ pins }: { pins: DashboardData['pins'] }) {
-  return (
-    <>
-      {pins.map((p) => (
-        <div key={p._id} className="flex items-center gap-2 h-9 text-xs">
-          <a
-            href={p.url}
-            target="_blank"
-            rel="noreferrer"
-            className="text-zinc-300 hover:text-white flex-1 truncate flex items-center gap-1"
-          >
-            {p.title}
-            <ExternalLink size={10} className="text-zinc-600 flex-shrink-0" />
-          </a>
-          <span className="text-zinc-600 font-mono truncate max-w-[80px]">
-            {new URL(p.url).hostname}
-          </span>
-        </div>
-      ))}
-    </>
-  )
-}
-
 function DeployRows({ notes }: { notes: DashboardData['deployNotes'] }) {
   return (
     <>
@@ -180,10 +158,41 @@ function PayloadRows({ payloads }: { payloads: DashboardData['payloads'] }) {
   )
 }
 
+function ScrollIndicator() {
+  const [visible, setVisible] = useState(true)
+
+  useEffect(() => {
+    const onScroll = () => { if (window.scrollY > 40) setVisible(false) }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  return (
+    <AnimatePresence>
+      {visible && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.4 }}
+          className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-1 pointer-events-none"
+        >
+          <motion.div
+            animate={{ y: [0, 6, 0] }}
+            transition={{ repeat: Infinity, duration: 1.6, ease: 'easeInOut' }}
+          >
+            <ChevronDown size={18} className="text-zinc-600" />
+          </motion.div>
+          <span className="text-[10px] text-zinc-700 font-mono">scroll for tools</span>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
 export function DashboardContent({ slug, data, loading }: Props) {
   const { displayName, setCounts } = useSpace()
 
-  // Push live counts into SpaceProvider so sidebar badges update
   useEffect(() => {
     if (data?.counts) {
       setCounts(data.counts)
@@ -195,103 +204,99 @@ export function DashboardContent({ slug, data, loading }: Props) {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <LiveClock />
-          <h1 className="text-xl font-semibold text-zinc-100 mt-1">{displayName}</h1>
-        </div>
+    <div className="flex flex-col">
+      {/* ── ZONE 1: Pinboard Hero (full viewport height) ── */}
+      <div className="relative" style={{ height: '100vh' }}>
+        <PinBoard spaceSlug={slug} isHero />
+        <ScrollIndicator />
       </div>
 
-      {/* Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <SectionWidget
-          title="API Keys"
-          icon={<Key size={14} />}
-          count={counts.apiKeys}
-          href={`/space/${slug}/api-keys`}
-          loading={loading}
-          emptyHref={`/space/${slug}/api-keys`}
-          emptyLabel="Add your first API key →"
-        >
-          <ApiKeyRows groups={data?.apiKeyGroups ?? []} slug={slug} />
-        </SectionWidget>
+      {/* ── ZONE 2: Utility Widgets ── */}
+      <div className="p-6 space-y-6 bg-[#0a0a0a]">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <LiveClock />
+            <h1 className="text-xl font-semibold text-zinc-100 mt-1">{displayName}</h1>
+          </div>
+        </div>
 
-        <SectionWidget
-          title="Env Variables"
-          icon={<Variable size={14} />}
-          count={counts.envVars}
-          href={`/space/${slug}/env-vars`}
-          loading={loading}
-          emptyHref={`/space/${slug}/env-vars`}
-          emptyLabel="Add your first env var →"
-        >
-          <EnvVarRows groups={data?.envGroups ?? []} slug={slug} />
-        </SectionWidget>
+        {/* Widget grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <SectionWidget
+            title="API Keys"
+            icon={<Key size={14} />}
+            count={counts.apiKeys}
+            href={`/space/${slug}/api-keys`}
+            loading={loading}
+            emptyHref={`/space/${slug}/api-keys`}
+            emptyLabel="Add your first API key →"
+          >
+            <ApiKeyRows groups={data?.apiKeyGroups ?? []} slug={slug} />
+          </SectionWidget>
 
-        <SectionWidget
-          title="GraphQL"
-          icon={<Braces size={14} />}
-          count={counts.graphql}
-          href={`/space/${slug}/graphql`}
-          loading={loading}
-          emptyHref={`/space/${slug}/graphql`}
-          emptyLabel="Save your first query →"
-        >
-          <GqlRows queries={data?.gqlQueries ?? []} />
-        </SectionWidget>
+          <SectionWidget
+            title="Env Variables"
+            icon={<Variable size={14} />}
+            count={counts.envVars}
+            href={`/space/${slug}/env-vars`}
+            loading={loading}
+            emptyHref={`/space/${slug}/env-vars`}
+            emptyLabel="Add your first env var →"
+          >
+            <EnvVarRows groups={data?.envGroups ?? []} slug={slug} />
+          </SectionWidget>
 
-        <SectionWidget
-          title="Pinboard"
-          icon={<Pin size={14} />}
-          count={counts.pins}
-          href={`/space/${slug}/pinboard`}
-          loading={loading}
-          emptyHref={`/space/${slug}/pinboard`}
-          emptyLabel="Pin your first link →"
-        >
-          <PinRows pins={data?.pins ?? []} />
-        </SectionWidget>
+          <SectionWidget
+            title="GraphQL"
+            icon={<Braces size={14} />}
+            count={counts.graphql}
+            href={`/space/${slug}/graphql`}
+            loading={loading}
+            emptyHref={`/space/${slug}/graphql`}
+            emptyLabel="Save your first query →"
+          >
+            <GqlRows queries={data?.gqlQueries ?? []} />
+          </SectionWidget>
 
-        <SectionWidget
-          title="Deploy Notes"
-          icon={<FileText size={14} />}
-          count={counts.deployNotes}
-          href={`/space/${slug}/deploy-notes`}
-          loading={loading}
-          emptyHref={`/space/${slug}/deploy-notes`}
-          emptyLabel="Add deploy commands →"
-        >
-          <DeployRows notes={data?.deployNotes ?? []} />
-        </SectionWidget>
+          <SectionWidget
+            title="Deploy Notes"
+            icon={<FileText size={14} />}
+            count={counts.deployNotes}
+            href={`/space/${slug}/deploy-notes`}
+            loading={loading}
+            emptyHref={`/space/${slug}/deploy-notes`}
+            emptyLabel="Add deploy commands →"
+          >
+            <DeployRows notes={data?.deployNotes ?? []} />
+          </SectionWidget>
 
-        <SectionWidget
-          title="Webhooks"
-          icon={<Webhook size={14} />}
-          count={counts.webhooks}
-          href={`/space/${slug}/webhooks`}
-          loading={loading}
-          emptyHref={`/space/${slug}/webhooks`}
-          emptyLabel="Save your first webhook →"
-        >
-          <WebhookRows webhooks={data?.webhooks ?? []} />
-        </SectionWidget>
+          <SectionWidget
+            title="Webhooks"
+            icon={<Webhook size={14} />}
+            count={counts.webhooks}
+            href={`/space/${slug}/webhooks`}
+            loading={loading}
+            emptyHref={`/space/${slug}/webhooks`}
+            emptyLabel="Save your first webhook →"
+          >
+            <WebhookRows webhooks={data?.webhooks ?? []} />
+          </SectionWidget>
 
-        <SectionWidget
-          title="JSON + CURL"
-          icon={<FileJson size={14} />}
-          count={counts.payloads}
-          href={`/space/${slug}/payloads`}
-          loading={loading}
-          emptyHref={`/space/${slug}/payloads`}
-          emptyLabel="Save your first payload →"
-        >
-          <PayloadRows payloads={data?.payloads ?? { json: [], curl: [] }} />
-        </SectionWidget>
+          <SectionWidget
+            title="JSON + CURL"
+            icon={<FileJson size={14} />}
+            count={counts.payloads}
+            href={`/space/${slug}/payloads`}
+            loading={loading}
+            emptyHref={`/space/${slug}/payloads`}
+            emptyLabel="Save your first payload →"
+          >
+            <PayloadRows payloads={data?.payloads ?? { json: [], curl: [] }} />
+          </SectionWidget>
 
-        {/* Spacer for odd last item */}
-        <div className="hidden md:block" />
+          <div className="hidden md:block" />
+        </div>
       </div>
     </div>
   )

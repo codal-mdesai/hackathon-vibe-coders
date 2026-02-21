@@ -77,6 +77,9 @@ export type PinDoc = {
   tags: string[]
   addedBy?: string
   color: string
+  gridX?: number
+  gridY?: number
+  deletedAt?: string
   createdAt: string
 }
 
