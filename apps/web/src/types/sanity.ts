@@ -1,5 +1,4 @@
-// All Sanity-derived TypeScript types live here.
-// Populated in S2.
+// All Sanity-derived TypeScript types. Mirrors apps/studio/schemaTypes/*.ts
 
 export type SpaceDoc = {
   _id: string
@@ -15,12 +14,13 @@ export type UserDoc = {
   _id: string
   _type: 'user'
   email: string
-  name: string
+  name?: string
   spaces: string[]
   createdAt: string
 }
 
 export type ApiKeyEntry = {
+  _key: string
   id: string
   label: string
   encryptedValue: string
@@ -29,7 +29,7 @@ export type ApiKeyEntry = {
   lastUsed?: string
 }
 
-export type ApiKeyGroupDoc = {
+export type ApiKeyGroup = {
   _id: string
   _type: 'apiKeyGroup'
   spaceSlug: string
@@ -38,6 +38,7 @@ export type ApiKeyGroupDoc = {
 }
 
 export type EnvVarEntry = {
+  _key: string
   id: string
   key: string
   encryptedValue: string
@@ -74,22 +75,25 @@ export type PinDoc = {
   url: string
   title: string
   tags: string[]
-  addedBy: string
+  addedBy?: string
   color: string
   createdAt: string
 }
 
 export type DeployCommand = {
+  _key: string
   step: number
   command: string
   description?: string
 }
 
 export type TechArea = {
+  _key: string
   id: string
   name: string
   isFavorite: boolean
   notes?: string
+  lastUsed?: string
   commands: DeployCommand[]
 }
 
@@ -102,11 +106,13 @@ export type DeployNoteDoc = {
 }
 
 export type WebhookHeader = {
+  _key: string
   key: string
   value: string
 }
 
 export type WebhookComment = {
+  _key: string
   field: string
   comment: string
 }
