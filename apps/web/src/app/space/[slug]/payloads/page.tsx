@@ -1,8 +1,10 @@
-// JSON + CURL — implemented in S11
-export default function PayloadsPage() {
-  return (
-    <div className="flex items-center justify-center h-full text-zinc-600 text-sm">
-      JSON + CURL (S11)
-    </div>
-  )
+import { PayloadsSection } from '@/components/sections/PayloadsSection'
+
+export default async function PayloadsPage({
+  params,
+}: {
+  params: Promise<{ slug: string }>
+}) {
+  const { slug } = await params
+  return <PayloadsSection spaceSlug={slug} />
 }
