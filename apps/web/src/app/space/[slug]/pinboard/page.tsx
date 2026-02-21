@@ -1,8 +1,10 @@
-// Pinboard — implemented in S12
-export default function PinboardPage() {
-  return (
-    <div className="flex items-center justify-center h-full text-zinc-600 text-sm">
-      Pinboard (S12)
-    </div>
-  )
+import { PinboardSection } from '@/components/sections/PinboardSection'
+
+export default async function PinboardPage({
+  params,
+}: {
+  params: Promise<{ slug: string }>
+}) {
+  const { slug } = await params
+  return <PinboardSection spaceSlug={slug} />
 }
