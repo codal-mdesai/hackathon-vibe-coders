@@ -1,5 +1,6 @@
 "use server";
 
+import { writeClient } from "@/sanity/lib/write-client";
 import { client } from "@/sanity/lib/client";
 
 export async function generateShareLink(
@@ -10,7 +11,7 @@ export async function generateShareLink(
   const token = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
 
-  await client.withConfig({ token: process.env.SANITY_API_WRITE_TOKEN }).create({
+  await writeClient.create({
     _type: "shareLink",
     token,
     resourceType,

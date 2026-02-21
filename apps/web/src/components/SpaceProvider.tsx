@@ -8,6 +8,7 @@ import {
   useCallback,
   use,
 } from "react";
+import { createSpace, updateSpaceName, updateSpaceAccent } from "@/actions/space";
 
 interface SpaceCounts {
   apiKeys: number;
@@ -28,6 +29,7 @@ interface SpaceContextValue {
   updateName: (name: string) => void;
   updateAccent: (color: string) => void;
   refreshCounts: () => void;
+  setCounts: (counts: SpaceCounts) => void;
 }
 
 const SpaceContext = createContext<SpaceContextValue | null>(null);
@@ -59,6 +61,7 @@ export function SpaceProvider({
   const [displayName, setDisplayName] = useState("My Space");
   const [accentColor, setAccentColor] = useState("#3b82f6");
   const [counts, setCounts] = useState<SpaceCounts>(DEFAULT_COUNTS);
+  const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
     const storedName = localStorage.getItem(`devpanel_name_${slug}`);
@@ -69,12 +72,17 @@ export function SpaceProvider({
       setAccentColor(storedAccent);
       document.documentElement.style.setProperty("--accent", storedAccent);
     }
+
+    createSpace(slug, storedName ?? "My Space", storedAccent ?? "#3b82f6")
+      .then(() => setInitialized(true))
+      .catch(() => setInitialized(true));
   }, [slug]);
 
   const updateName = useCallback(
     (name: string) => {
       setDisplayName(name);
       localStorage.setItem(`devpanel_name_${slug}`, name);
+      updateSpaceName(slug, name).catch(() => {});
     },
     [slug],
   );
@@ -84,6 +92,7 @@ export function SpaceProvider({
       setAccentColor(color);
       localStorage.setItem(`devpanel_accent_${slug}`, color);
       document.documentElement.style.setProperty("--accent", color);
+      updateSpaceAccent(slug, color).catch(() => {});
     },
     [slug],
   );
@@ -102,9 +111,14 @@ export function SpaceProvider({
         updateName,
         updateAccent,
         refreshCounts,
+        setCounts,
       }}
     >
-      {children}
+      {initialized ? children : (
+        <div className="flex h-screen items-center justify-center">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-zinc-700 border-t-zinc-300" />
+        </div>
+      )}
     </SpaceContext.Provider>
   );
 }
