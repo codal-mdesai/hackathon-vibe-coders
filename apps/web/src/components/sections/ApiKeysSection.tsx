@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import { SectionPageShell } from '@/components/SectionPageShell'
 import { Button } from '@/components/ui/button'
@@ -78,6 +78,7 @@ function AddKeyDialog({
   stores: string[]
   onCreated: () => void
 }) {
+  const qc = useQueryClient()
   const [open, setOpen] = useState(false)
   const [storeName, setStoreName] = useState('')
   const [label, setLabel] = useState('')
@@ -89,16 +90,49 @@ function AddKeyDialog({
     if (!storeName.trim() || !label.trim() || !value.trim()) return
     setSaving(true)
     try {
-      const key = await deriveKey(spaceSlug)
-      const encryptedValue = await encrypt(value, key)
-      await createApiKey(spaceSlug, storeName.trim(), label.trim(), encryptedValue)
-      onCreated()
+      const cryptoKey = await deriveKey(spaceSlug)
+      const encryptedValue = await encrypt(value, cryptoKey)
+
+      // Optimistic update — show item instantly
+      const tempEntry: ApiKeyEntry = {
+        _key: `opt-${Date.now()}`,
+        id: `opt-${Date.now()}`,
+        label: label.trim(),
+        encryptedValue,
+        isFavorite: false,
+        usageCount: 0,
+      }
+      qc.setQueryData<ApiKeyGroup[]>(['api-keys', spaceSlug], (old = []) => {
+        const idx = old.findIndex((g) => g.storeName === storeName.trim())
+        if (idx >= 0) {
+          return old.map((g, i) =>
+            i === idx ? { ...g, keys: [...(g.keys ?? []), tempEntry] } : g,
+          )
+        }
+        return [
+          ...old,
+          {
+            _id: `opt-g-${Date.now()}`,
+            _type: 'apiKeyGroup' as const,
+            spaceSlug,
+            storeName: storeName.trim(),
+            keys: [tempEntry],
+          },
+        ]
+      })
+
+      // Close dialog immediately — item is already visible
       setOpen(false)
       setStoreName(''); setLabel(''); setValue('')
+      setSaving(false)
+
+      // Persist to Sanity in background, then sync real data
+      await createApiKey(spaceSlug, storeName.trim(), label.trim(), encryptedValue)
+      onCreated()
     } catch (err) {
       console.error('Failed to create API key:', err)
-    } finally {
       setSaving(false)
+      void qc.invalidateQueries({ queryKey: ['api-keys', spaceSlug] })
     }
   }
 
@@ -173,6 +207,7 @@ function KeyCard({
   spaceSlug: string
   onMutate: () => void
 }) {
+  const qc = useQueryClient()
   const { copied, copy } = useCopyToClipboard()
   const [editOpen, setEditOpen] = useState(false)
   const [editLabel, setEditLabel] = useState(entry.label)
@@ -185,29 +220,47 @@ function KeyCard({
       const key = await deriveKey(spaceSlug)
       const plain = await decrypt(entry.encryptedValue, key)
       await copy(plain)
-      await incrementApiKeyUsage(group._id, entry._key)
-      onMutate()
+      void incrementApiKeyUsage(group._id, entry._key)
     } catch (err) {
       console.error('Failed to decrypt/copy:', err)
     }
-  }, [entry, group._id, spaceSlug, copy, onMutate])
+  }, [entry, group._id, spaceSlug, copy])
 
-  const handleToggleFav = useCallback(async () => {
-    await toggleApiKeyFavorite(group._id, entry._key, !entry.isFavorite)
-    onMutate()
-  }, [entry, group._id, onMutate])
+  const handleToggleFav = useCallback(() => {
+    const newFav = !entry.isFavorite
+    // Optimistic update
+    qc.setQueryData<ApiKeyGroup[]>(['api-keys', spaceSlug], (old = []) =>
+      old.map((g) =>
+        g._id !== group._id ? g : {
+          ...g,
+          keys: (g.keys ?? []).map((k) =>
+            k._key === entry._key ? { ...k, isFavorite: newFav } : k,
+          ),
+        },
+      ),
+    )
+    void toggleApiKeyFavorite(group._id, entry._key, newFav).then(onMutate)
+  }, [entry, group._id, onMutate, qc, spaceSlug])
 
-  const handleDelete = useCallback(async () => {
+  const handleDelete = useCallback(() => {
     setDeleting(true)
-    try {
-      await deleteApiKey(group._id, entry._key)
-      onMutate()
-    } catch (err) {
-      console.error('Failed to delete:', err)
-    } finally {
-      setDeleting(false)
-    }
-  }, [entry._key, group._id, onMutate])
+    // Optimistic remove
+    qc.setQueryData<ApiKeyGroup[]>(['api-keys', spaceSlug], (old = []) =>
+      old
+        .map((g) => ({
+          ...g,
+          keys: (g.keys ?? []).filter((k) => k._key !== entry._key),
+        }))
+        .filter((g) => (g.keys ?? []).length > 0),
+    )
+    void deleteApiKey(group._id, entry._key)
+      .then(onMutate)
+      .catch((err) => {
+        console.error('Failed to delete:', err)
+        void qc.invalidateQueries({ queryKey: ['api-keys', spaceSlug] })
+      })
+      .finally(() => setDeleting(false))
+  }, [entry._key, group._id, onMutate, qc, spaceSlug])
 
   const handleEditSave = useCallback(async () => {
     try {

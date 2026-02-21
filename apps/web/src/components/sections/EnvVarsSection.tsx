@@ -29,6 +29,7 @@ import type { EnvGroupDoc, EnvVarEntry } from '@/types/sanity'
 type Props = { spaceSlug: string }
 
 function AddVarDialog({ spaceSlug, projects, onCreated }: { spaceSlug: string; projects: string[]; onCreated: () => void }) {
+  const qc = useQueryClient()
   const [open, setOpen] = useState(false)
   const [project, setProject] = useState('')
   const [key, setKey] = useState('')
@@ -42,14 +43,48 @@ function AddVarDialog({ spaceSlug, projects, onCreated }: { spaceSlug: string; p
     try {
       const cryptoKey = await deriveKey(spaceSlug)
       const encryptedValue = await encrypt(value, cryptoKey)
-      await createEnvVar(spaceSlug, project.trim(), key.trim().toUpperCase(), encryptedValue)
-      onCreated()
+      const upperKey = key.trim().toUpperCase()
+
+      // Optimistic update — show item instantly
+      const tempEntry: EnvVarEntry = {
+        _key: `opt-${Date.now()}`,
+        id: `opt-${Date.now()}`,
+        key: upperKey,
+        encryptedValue,
+        isFavorite: false,
+        usageCount: 0,
+      }
+      qc.setQueryData<EnvGroupDoc[]>(['env-vars', spaceSlug], (old = []) => {
+        const idx = old.findIndex((g) => g.projectName === project.trim())
+        if (idx >= 0) {
+          return old.map((g, i) =>
+            i === idx ? { ...g, vars: [...(g.vars ?? []), tempEntry] } : g,
+          )
+        }
+        return [
+          ...old,
+          {
+            _id: `opt-g-${Date.now()}`,
+            _type: 'envGroup' as const,
+            spaceSlug,
+            projectName: project.trim(),
+            vars: [tempEntry],
+          },
+        ]
+      })
+
+      // Close immediately — item already visible
       setOpen(false)
       setProject(''); setKey(''); setValue('')
+      setSaving(false)
+
+      // Persist and sync
+      await createEnvVar(spaceSlug, project.trim(), upperKey, encryptedValue)
+      onCreated()
     } catch (err) {
       console.error('Failed to create env var:', err)
-    } finally {
       setSaving(false)
+      void qc.invalidateQueries({ queryKey: ['env-vars', spaceSlug] })
     }
   }
 
@@ -123,6 +158,7 @@ function AddVarDialog({ spaceSlug, projects, onCreated }: { spaceSlug: string; p
 }
 
 function VarCard({ group, entry, spaceSlug, onMutate }: { group: EnvGroupDoc; entry: EnvVarEntry; spaceSlug: string; onMutate: () => void }) {
+  const qc = useQueryClient()
   const { copied, copy } = useCopyToClipboard()
   const [editOpen, setEditOpen] = useState(false)
   const [editKey, setEditKey] = useState(entry.key)
@@ -131,25 +167,46 @@ function VarCard({ group, entry, spaceSlug, onMutate }: { group: EnvGroupDoc; en
 
   const handleCopy = useCallback(async () => {
     try {
-      const key = await deriveKey(spaceSlug)
-      const plain = await decrypt(entry.encryptedValue, key)
+      const cryptoKey = await deriveKey(spaceSlug)
+      const plain = await decrypt(entry.encryptedValue, cryptoKey)
       await copy(`${entry.key}=${plain}`)
-      await updateEnvVarLastUsed(group._id, entry._key)
-      onMutate()
+      void updateEnvVarLastUsed(group._id, entry._key)
     } catch (err) {
       console.error('Failed to copy env var:', err)
     }
-  }, [entry, group._id, spaceSlug, copy, onMutate])
+  }, [entry, group._id, spaceSlug, copy])
 
-  const handleToggleFav = useCallback(async () => {
-    await toggleEnvVarFavorite(group._id, entry._key, !entry.isFavorite)
-    onMutate()
-  }, [entry, group._id, onMutate])
+  const handleToggleFav = useCallback(() => {
+    const newFav = !entry.isFavorite
+    qc.setQueryData<EnvGroupDoc[]>(['env-vars', spaceSlug], (old = []) =>
+      old.map((g) =>
+        g._id !== group._id ? g : {
+          ...g,
+          vars: (g.vars ?? []).map((v) =>
+            v._key === entry._key ? { ...v, isFavorite: newFav } : v,
+          ),
+        },
+      ),
+    )
+    void toggleEnvVarFavorite(group._id, entry._key, newFav).then(onMutate)
+  }, [entry, group._id, onMutate, qc, spaceSlug])
 
-  const handleDelete = useCallback(async () => {
-    await deleteEnvVar(group._id, entry._key)
-    onMutate()
-  }, [entry._key, group._id, onMutate])
+  const handleDelete = useCallback(() => {
+    qc.setQueryData<EnvGroupDoc[]>(['env-vars', spaceSlug], (old = []) =>
+      old
+        .map((g) => ({
+          ...g,
+          vars: (g.vars ?? []).filter((v) => v._key !== entry._key),
+        }))
+        .filter((g) => (g.vars ?? []).length > 0),
+    )
+    void deleteEnvVar(group._id, entry._key)
+      .then(onMutate)
+      .catch((err) => {
+        console.error('Failed to delete:', err)
+        void qc.invalidateQueries({ queryKey: ['env-vars', spaceSlug] })
+      })
+  }, [entry._key, group._id, onMutate, qc, spaceSlug])
 
   const handleEditSave = useCallback(async () => {
     try {

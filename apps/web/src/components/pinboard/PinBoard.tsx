@@ -170,14 +170,35 @@ export function PinBoard({ spaceSlug, isHero = false }: Props) {
     try {
       const tagList = tags.split(',').map((t) => t.trim()).filter(Boolean)
       const { gridX, gridY } = getNewPinPosition(visiblePins, cardW, cardH, boardRef.current)
-      await createPin(spaceSlug, url.trim(), title.trim(), tagList, color, displayName, gridX, gridY)
-      refresh()
+
+      // Optimistic update — pin appears on board instantly
+      const tempPin: PinDoc = {
+        _id: `opt-${Date.now()}`,
+        _type: 'pin',
+        spaceSlug,
+        url: url.trim(),
+        title: title.trim(),
+        tags: tagList,
+        color,
+        addedBy: displayName,
+        gridX,
+        gridY,
+        createdAt: new Date().toISOString(),
+      }
+      qc.setQueryData<PinDoc[]>(['pins', spaceSlug], (old = []) => [...old, tempPin])
+
+      // Close popover immediately
       setPopoverOpen(false)
       setUrl(''); setTitle(''); setTags(''); setColor('zinc')
+      setSaving(false)
+
+      // Persist and sync real data in background
+      await createPin(spaceSlug, url.trim(), title.trim(), tagList, color, displayName, gridX, gridY)
+      refresh()
     } catch (err) {
       console.error('Failed to create pin:', err)
-    } finally {
       setSaving(false)
+      void qc.invalidateQueries({ queryKey: ['pins', spaceSlug] })
     }
   }
 
