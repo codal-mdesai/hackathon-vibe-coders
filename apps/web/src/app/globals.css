@@ -1,1 +1,29 @@
 @import "tailwindcss";
+
+:root {
+  --bg-page: #0a0a0a;
+  --bg-card: #18181b;
+  --accent: #3b82f6;
+  --radius: 0.5rem;
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+* {
+  border-color: theme(--color-zinc-800);
+}
+
+body {
+  background-color: var(--bg-page);
+  color: theme(--color-zinc-100);
+  font-family: var(--font-sans);
+}
+
+::selection {
+  background-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: theme(--color-zinc-700) transparent;
+}
