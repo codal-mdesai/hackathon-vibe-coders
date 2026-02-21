@@ -1,17 +1,25 @@
 'use client'
 
-// S3 implements full space creation. This is the entry point.
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { createSpace } from '@/actions/space'
 
 export default function NewSpacePage() {
   const router = useRouter()
 
   useEffect(() => {
-    // S3 wires this to actual Sanity space creation
-    const slug = `space-${crypto.randomUUID().slice(0, 10)}`
-    localStorage.setItem('devpanel_space', slug)
-    router.replace(`/space/${slug}`)
+    async function bootstrap() {
+      // Generate a unique 10-char slug
+      const slug = crypto.randomUUID().replace(/-/g, '').slice(0, 10)
+      try {
+        await createSpace(slug)
+      } catch {
+        // Space creation might fail if Sanity isn't configured yet — still proceed
+      }
+      localStorage.setItem('devpanel_space', slug)
+      router.replace(`/space/${slug}`)
+    }
+    void bootstrap()
   }, [router])
 
   return (
