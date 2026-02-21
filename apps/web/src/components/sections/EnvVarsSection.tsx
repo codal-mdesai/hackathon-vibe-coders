@@ -78,9 +78,8 @@ function AddVarDialog({ spaceSlug, projects, onCreated }: { spaceSlug: string; p
       setProject(''); setKey(''); setValue('')
       setSaving(false)
 
-      // Persist and sync
-      await createEnvVar(spaceSlug, project.trim(), upperKey, encryptedValue)
-      onCreated()
+      // Persist in background — optimistic cache already up to date
+      void createEnvVar(spaceSlug, project.trim(), upperKey, encryptedValue)
     } catch (err) {
       console.error('Failed to create env var:', err)
       setSaving(false)
@@ -188,7 +187,7 @@ function VarCard({ group, entry, spaceSlug, onMutate }: { group: EnvGroupDoc; en
         },
       ),
     )
-    void toggleEnvVarFavorite(group._id, entry._key, newFav).then(onMutate)
+    void toggleEnvVarFavorite(group._id, entry._key, newFav)
   }, [entry, group._id, onMutate, qc, spaceSlug])
 
   const handleDelete = useCallback(() => {
@@ -201,7 +200,6 @@ function VarCard({ group, entry, spaceSlug, onMutate }: { group: EnvGroupDoc; en
         .filter((g) => (g.vars ?? []).length > 0),
     )
     void deleteEnvVar(group._id, entry._key)
-      .then(onMutate)
       .catch((err) => {
         console.error('Failed to delete:', err)
         void qc.invalidateQueries({ queryKey: ['env-vars', spaceSlug] })

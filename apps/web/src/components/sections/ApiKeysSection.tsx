@@ -126,9 +126,8 @@ function AddKeyDialog({
       setStoreName(''); setLabel(''); setValue('')
       setSaving(false)
 
-      // Persist to Sanity in background, then sync real data
-      await createApiKey(spaceSlug, storeName.trim(), label.trim(), encryptedValue)
-      onCreated()
+      // Persist to Sanity in background — optimistic cache already up to date
+      void createApiKey(spaceSlug, storeName.trim(), label.trim(), encryptedValue)
     } catch (err) {
       console.error('Failed to create API key:', err)
       setSaving(false)
@@ -239,7 +238,7 @@ function KeyCard({
         },
       ),
     )
-    void toggleApiKeyFavorite(group._id, entry._key, newFav).then(onMutate)
+    void toggleApiKeyFavorite(group._id, entry._key, newFav)
   }, [entry, group._id, onMutate, qc, spaceSlug])
 
   const handleDelete = useCallback(() => {
@@ -254,7 +253,6 @@ function KeyCard({
         .filter((g) => (g.keys ?? []).length > 0),
     )
     void deleteApiKey(group._id, entry._key)
-      .then(onMutate)
       .catch((err) => {
         console.error('Failed to delete:', err)
         void qc.invalidateQueries({ queryKey: ['api-keys', spaceSlug] })

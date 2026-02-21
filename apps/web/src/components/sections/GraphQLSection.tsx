@@ -96,7 +96,8 @@ function parseVariables(vars?: string): Record<string, unknown> {
   try { return JSON.parse(vars) as Record<string, unknown> } catch { return {} }
 }
 
-function GqlCard({ q, spaceSlug, onMutate }: { q: GqlQueryDoc; spaceSlug: string; onMutate: () => void }) {
+function GqlCard({ q, spaceSlug, onMutate: _onMutate }: { q: GqlQueryDoc; spaceSlug: string; onMutate: () => void }) {
+  const qc = useQueryClient()
   const [editOpen, setEditOpen] = useState(false)
   const [editProject, setEditProject] = useState(q.projectName)
   const [editName, setEditName] = useState(q.name)
@@ -104,30 +105,36 @@ function GqlCard({ q, spaceSlug, onMutate }: { q: GqlQueryDoc; spaceSlug: string
   const [editVars, setEditVars] = useState(q.variables ?? '')
   const [varsError, setVarsError] = useState('')
 
-  const handleToggleFav = useCallback(async () => {
-    await toggleGqlFavorite(q._id, !q.isFavorite)
-    onMutate()
-  }, [q._id, q.isFavorite, onMutate])
+  const handleToggleFav = useCallback(() => {
+    const newFav = !q.isFavorite
+    qc.setQueryData<GqlQueryDoc[]>(['graphql', spaceSlug], (old = []) =>
+      old.map((item) => item._id === q._id ? { ...item, isFavorite: newFav } : item)
+    )
+    void toggleGqlFavorite(q._id, newFav)
+  }, [q._id, q.isFavorite, qc, spaceSlug])
 
-  const handleDelete = useCallback(async () => {
-    await deleteQuery(q._id)
-    onMutate()
-  }, [q._id, onMutate])
+  const handleDelete = useCallback(() => {
+    qc.setQueryData<GqlQueryDoc[]>(['graphql', spaceSlug], (old = []) =>
+      old.filter((item) => item._id !== q._id)
+    )
+    void deleteQuery(q._id)
+  }, [q._id, qc, spaceSlug])
 
   const handleUsage = useCallback(() => {
     void incrementGqlUsage(q._id, q.usageCount)
-    onMutate()
-  }, [q._id, q.usageCount, onMutate])
+  }, [q._id, q.usageCount])
 
   const handleEditSave = useCallback(async () => {
     if (editVars.trim()) {
       try { JSON.parse(editVars) } catch { setVarsError('Invalid JSON'); return }
     }
     setVarsError('')
-    await updateQuery(q._id, editProject, editName, editQuery, editVars)
-    onMutate()
+    qc.setQueryData<GqlQueryDoc[]>(['graphql', spaceSlug], (old = []) =>
+      old.map((item) => item._id === q._id ? { ...item, projectName: editProject, name: editName, query: editQuery, variables: editVars } : item)
+    )
     setEditOpen(false)
-  }, [editProject, editName, editQuery, editVars, q._id, onMutate])
+    void updateQuery(q._id, editProject, editName, editQuery, editVars)
+  }, [editProject, editName, editQuery, editVars, q._id, qc, spaceSlug])
 
   const parsedVars = parseVariables(q.variables)
   const firstLines = q.query.trim().split('\n').slice(0, 3).join('\n')
@@ -275,7 +282,8 @@ function QueryForm({
   )
 }
 
-function AddQueryDialog({ spaceSlug, onCreated }: { spaceSlug: string; onCreated: () => void }) {
+function AddQueryDialog({ spaceSlug, onCreated: _onCreated }: { spaceSlug: string; onCreated: () => void }) {
+  const qc = useQueryClient()
   const [open, setOpen] = useState(false)
   const [project, setProject] = useState('')
   const [name, setName] = useState('')
@@ -291,16 +299,32 @@ function AddQueryDialog({ spaceSlug, onCreated }: { spaceSlug: string; onCreated
     setVarsError('')
     setSaving(true)
     try {
-      await createQuery(spaceSlug, project, name, query, vars)
-      onCreated()
+      // Optimistic update — item appears immediately
+      const tempQuery: GqlQueryDoc = {
+        _id: `opt-${Date.now()}`,
+        _type: 'gqlQuery',
+        spaceSlug,
+        projectName: project,
+        name,
+        query,
+        variables: vars || undefined,
+        isFavorite: false,
+        usageCount: 0,
+      }
+      qc.setQueryData<GqlQueryDoc[]>(['graphql', spaceSlug], (old = []) => [...old, tempQuery])
+
+      // Close dialog immediately
       setOpen(false)
       setProject(''); setName(''); setQuery(''); setVars('')
+      setSaving(false)
+
+      // Persist in background
+      void createQuery(spaceSlug, project, name, query, vars)
     } catch (err) {
       console.error('Failed to create query:', err)
-    } finally {
       setSaving(false)
     }
-  }, [spaceSlug, project, name, query, vars, onCreated])
+  }, [spaceSlug, project, name, query, vars, qc])
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

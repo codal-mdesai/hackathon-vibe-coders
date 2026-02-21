@@ -40,7 +40,8 @@ function SectionHeader({ label }: { label: string }) {
 
 // ─── JSON Payloads ───────────────────────────────────────────────────────────
 
-function JsonCard({ j, spaceSlug, onMutate }: { j: JsonPayloadDoc; spaceSlug: string; onMutate: () => void }) {
+function JsonCard({ j, spaceSlug, onMutate: _onMutate }: { j: JsonPayloadDoc; spaceSlug: string; onMutate: () => void }) {
+  const qc = useQueryClient()
   const { copied, copy } = useCopyToClipboard()
   const [editOpen, setEditOpen] = useState(false)
   const [editProject, setEditProject] = useState(j.projectName)
@@ -50,29 +51,35 @@ function JsonCard({ j, spaceSlug, onMutate }: { j: JsonPayloadDoc; spaceSlug: st
 
   const handleCopy = useCallback(async () => {
     await copy(j.payload)
-    await updateJsonLastUsed(j._id)
-    onMutate()
-  }, [j._id, j.payload, copy, onMutate])
+    void updateJsonLastUsed(j._id)
+  }, [j._id, j.payload, copy])
 
-  const handleToggleFav = useCallback(async () => {
-    await toggleJsonFavorite(j._id, !j.isFavorite)
-    onMutate()
-  }, [j._id, j.isFavorite, onMutate])
+  const handleToggleFav = useCallback(() => {
+    const newFav = !j.isFavorite
+    qc.setQueryData<JsonPayloadDoc[]>(['json-payloads', spaceSlug], (old = []) =>
+      old.map((item) => item._id === j._id ? { ...item, isFavorite: newFav } : item)
+    )
+    void toggleJsonFavorite(j._id, newFav)
+  }, [j._id, j.isFavorite, qc, spaceSlug])
 
-  const handleDelete = useCallback(async () => {
-    await deleteJsonPayload(j._id)
-    onMutate()
-  }, [j._id, onMutate])
+  const handleDelete = useCallback(() => {
+    qc.setQueryData<JsonPayloadDoc[]>(['json-payloads', spaceSlug], (old = []) =>
+      old.filter((item) => item._id !== j._id)
+    )
+    void deleteJsonPayload(j._id)
+  }, [j._id, qc, spaceSlug])
 
   const handleEditSave = useCallback(async () => {
     if (editPayload.trim()) {
       try { JSON.parse(editPayload) } catch { setPayloadError('Invalid JSON'); return }
     }
     setPayloadError('')
-    await updateJsonPayload(j._id, editProject, editName, editPayload)
-    onMutate()
+    qc.setQueryData<JsonPayloadDoc[]>(['json-payloads', spaceSlug], (old = []) =>
+      old.map((item) => item._id === j._id ? { ...item, projectName: editProject, name: editName, payload: editPayload } : item)
+    )
     setEditOpen(false)
-  }, [editProject, editName, editPayload, j._id, onMutate])
+    void updateJsonPayload(j._id, editProject, editName, editPayload)
+  }, [editProject, editName, editPayload, j._id, qc, spaceSlug])
 
   return (
     <motion.div
@@ -157,7 +164,8 @@ function JsonCard({ j, spaceSlug, onMutate }: { j: JsonPayloadDoc; spaceSlug: st
   )
 }
 
-function AddJsonDialog({ spaceSlug, onCreated }: { spaceSlug: string; onCreated: () => void }) {
+function AddJsonDialog({ spaceSlug, onCreated: _onCreated }: { spaceSlug: string; onCreated: () => void }) {
+  const qc = useQueryClient()
   const [open, setOpen] = useState(false)
   const [project, setProject] = useState('')
   const [name, setName] = useState('')
@@ -172,13 +180,22 @@ function AddJsonDialog({ spaceSlug, onCreated }: { spaceSlug: string; onCreated:
     setPayloadError('')
     setSaving(true)
     try {
-      await createJsonPayload(spaceSlug, project, name, payload)
-      onCreated()
+      const tempJson: JsonPayloadDoc = {
+        _id: `opt-${Date.now()}`,
+        _type: 'jsonPayload',
+        spaceSlug,
+        projectName: project,
+        name,
+        payload,
+        isFavorite: false,
+      }
+      qc.setQueryData<JsonPayloadDoc[]>(['json-payloads', spaceSlug], (old = []) => [...old, tempJson])
       setOpen(false)
       setProject(''); setName(''); setPayload('')
+      setSaving(false)
+      void createJsonPayload(spaceSlug, project, name, payload)
     } catch (err) {
       console.error('Failed to create payload:', err)
-    } finally {
       setSaving(false)
     }
   }

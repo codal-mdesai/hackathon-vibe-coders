@@ -192,9 +192,8 @@ export function PinBoard({ spaceSlug, isHero = false }: Props) {
       setUrl(''); setTitle(''); setTags(''); setColor('zinc')
       setSaving(false)
 
-      // Persist and sync real data in background
-      await createPin(spaceSlug, url.trim(), title.trim(), tagList, color, displayName, gridX, gridY)
-      refresh()
+      // Persist in background — optimistic cache already up to date
+      void createPin(spaceSlug, url.trim(), title.trim(), tagList, color, displayName, gridX, gridY)
     } catch (err) {
       console.error('Failed to create pin:', err)
       setSaving(false)

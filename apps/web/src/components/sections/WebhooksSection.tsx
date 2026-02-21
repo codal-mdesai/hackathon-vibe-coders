@@ -53,26 +53,31 @@ function KVRows({ rows, onChange, valuePlaceholder }: { rows: KVRow[]; onChange:
   )
 }
 
-function WebhookCard({ w, spaceSlug, onMutate }: { w: WebhookDoc; spaceSlug: string; onMutate: () => void }) {
+function WebhookCard({ w, spaceSlug, onMutate: _onMutate }: { w: WebhookDoc; spaceSlug: string; onMutate: () => void }) {
+  const qc = useQueryClient()
   const { copied, copy } = useCopyToClipboard()
   const [editOpen, setEditOpen] = useState(false)
 
   const handleCopyPayload = useCallback(async () => {
     if (!w.payload) return
     await copy(w.payload)
-    await updateWebhookLastUsed(w._id)
-    onMutate()
-  }, [w._id, w.payload, copy, onMutate])
+    void updateWebhookLastUsed(w._id)
+  }, [w._id, w.payload, copy])
 
-  const handleToggleFav = useCallback(async () => {
-    await toggleWebhookFavorite(w._id, !w.isFavorite)
-    onMutate()
-  }, [w._id, w.isFavorite, onMutate])
+  const handleToggleFav = useCallback(() => {
+    const newFav = !w.isFavorite
+    qc.setQueryData<WebhookDoc[]>(['webhooks', spaceSlug], (old = []) =>
+      old.map((item) => item._id === w._id ? { ...item, isFavorite: newFav } : item)
+    )
+    void toggleWebhookFavorite(w._id, newFav)
+  }, [w._id, w.isFavorite, qc, spaceSlug])
 
-  const handleDelete = useCallback(async () => {
-    await deleteWebhook(w._id)
-    onMutate()
-  }, [w._id, onMutate])
+  const handleDelete = useCallback(() => {
+    qc.setQueryData<WebhookDoc[]>(['webhooks', spaceSlug], (old = []) =>
+      old.filter((item) => item._id !== w._id)
+    )
+    void deleteWebhook(w._id)
+  }, [w._id, qc, spaceSlug])
 
   const commentsMap = Object.fromEntries((w.comments ?? []).map((c) => [c.field, c.comment]))
 
@@ -168,7 +173,7 @@ function WebhookCard({ w, spaceSlug, onMutate }: { w: WebhookDoc; spaceSlug: str
         </div>
       </div>
 
-      <EditWebhookDialog open={editOpen} onOpenChange={setEditOpen} w={w} onMutate={onMutate} />
+      <EditWebhookDialog open={editOpen} onOpenChange={setEditOpen} w={w} onMutate={_onMutate} />
     </motion.div>
   )
 }
@@ -215,7 +220,8 @@ function WebhookFormFields({ data, onChange }: { data: WebhookFormData; onChange
   )
 }
 
-function AddWebhookDialog({ spaceSlug, onCreated }: { spaceSlug: string; onCreated: () => void }) {
+function AddWebhookDialog({ spaceSlug, onCreated: _onCreated }: { spaceSlug: string; onCreated: () => void }) {
+  const qc = useQueryClient()
   const [open, setOpen] = useState(false)
   const [data, setData] = useState<WebhookFormData>({ project: '', name: '', url: '', headers: [], payload: '', comments: [] })
   const [saving, setSaving] = useState(false)
@@ -224,13 +230,28 @@ function AddWebhookDialog({ spaceSlug, onCreated }: { spaceSlug: string; onCreat
     if (!data.project.trim() || !data.name.trim() || !data.url.trim()) return
     setSaving(true)
     try {
-      await createWebhook(spaceSlug, data.project, data.name, data.url, data.headers.filter((h) => h.key), data.payload, data.comments.filter((c) => c.key).map((c) => ({ field: c.key, comment: c.value })))
-      onCreated()
+      const filteredHeaders = data.headers.filter((h) => h.key)
+      const filteredComments: import('@/types/sanity').WebhookComment[] = data.comments.filter((c) => c.key).map((c, i) => ({ _key: `opt-c-${Date.now()}-${i}`, field: c.key, comment: c.value }))
+      // Optimistic update — item appears immediately
+      const tempWebhook: WebhookDoc = {
+        _id: `opt-${Date.now()}`,
+        _type: 'webhook',
+        spaceSlug,
+        projectName: data.project,
+        name: data.name,
+        url: data.url,
+        headers: filteredHeaders.map((h) => ({ _key: `opt-h-${Date.now()}`, key: h.key, value: h.value })),
+        payload: data.payload || undefined,
+        comments: filteredComments,
+        isFavorite: false,
+      }
+      qc.setQueryData<WebhookDoc[]>(['webhooks', spaceSlug], (old = []) => [...old, tempWebhook])
       setOpen(false)
       setData({ project: '', name: '', url: '', headers: [], payload: '', comments: [] })
+      setSaving(false)
+      void createWebhook(spaceSlug, data.project, data.name, data.url, filteredHeaders, data.payload, filteredComments)
     } catch (err) {
       console.error('Failed to create webhook:', err)
-    } finally {
       setSaving(false)
     }
   }
