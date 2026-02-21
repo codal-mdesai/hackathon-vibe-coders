@@ -33,7 +33,7 @@ export default async function SpaceLayout({
         <Sidebar />
         <main className="flex-1 min-w-0">{children}</main>
       </div>
-      <CmdK />
+      <CmdK spaceSlug={slug} />
     </SpaceProvider>
   )
 }
