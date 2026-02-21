@@ -1,8 +1,10 @@
-// GraphQL — implemented in S8
-export default function GraphQLPage() {
-  return (
-    <div className="flex items-center justify-center h-full text-zinc-600 text-sm">
-      GraphQL (S8)
-    </div>
-  )
+import { GraphQLSection } from '@/components/sections/GraphQLSection'
+
+export default async function GraphQLPage({
+  params,
+}: {
+  params: Promise<{ slug: string }>
+}) {
+  const { slug } = await params
+  return <GraphQLSection spaceSlug={slug} />
 }
