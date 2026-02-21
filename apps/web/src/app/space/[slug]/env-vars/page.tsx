@@ -1,8 +1,10 @@
-// Env Variables — implemented in S7
-export default function EnvVarsPage() {
-  return (
-    <div className="flex items-center justify-center h-full text-zinc-600 text-sm">
-      Env Variables (S7)
-    </div>
-  )
+import { EnvVarsSection } from '@/components/sections/EnvVarsSection'
+
+export default async function EnvVarsPage({
+  params,
+}: {
+  params: Promise<{ slug: string }>
+}) {
+  const { slug } = await params
+  return <EnvVarsSection spaceSlug={slug} />
 }
